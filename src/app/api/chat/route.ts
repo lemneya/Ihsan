@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, UIMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
@@ -19,11 +19,33 @@ function getModel(provider: ModelProvider, modelId: string) {
   }
 }
 
+// Convert UI messages (parts format) to model messages (content format)
+function convertMessages(uiMessages: UIMessage[]) {
+  return uiMessages.map((msg) => {
+    const textParts = msg.parts?.filter(
+      (p): p is { type: "text"; text: string } => p.type === "text"
+    );
+    const textContent =
+      textParts?.map((p) => p.text).join("") ||
+      (msg as unknown as { content?: string }).content ||
+      "";
+
+    return {
+      role: msg.role as "user" | "assistant",
+      content: textContent,
+    };
+  });
+}
+
 export async function POST(req: Request) {
-  const { messages, provider = "anthropic", modelId = "claude-sonnet-4-5-20250929" } =
-    await req.json();
+  const {
+    messages,
+    provider = "anthropic",
+    modelId = "claude-sonnet-4-5-20250929",
+  } = await req.json();
 
   const model = getModel(provider as ModelProvider, modelId);
+  const convertedMessages = convertMessages(messages);
 
   const result = streamText({
     model,
@@ -39,7 +61,7 @@ Your responses should be:
 - Use bullet points and numbered lists for clarity
 
 You are helpful, accurate, and strive for excellence (Ihsan means excellence/perfection in Arabic).`,
-    messages,
+    messages: convertedMessages,
   });
 
   return result.toUIMessageStreamResponse();
