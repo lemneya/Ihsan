@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ihsan — AI Search & Assistant
+
+**Ihsan** (Arabic for *excellence/perfection*) is a modern AI-powered search and assistant platform inspired by [Genspark](https://genspark.ai). It delivers rich, structured **Sparkpages** instead of simple chat responses — turning every query into a comprehensive, wiki-like answer.
+
+## Features
+
+- **Sparkpages** — Structured, rich answer panels with sections, summaries, and source citations
+- **Multi-Model Support** — Switch between Claude, GPT-4o, and Gemini models on the fly
+- **Streaming Responses** — Real-time token-by-token streaming via Vercel AI SDK
+- **Modern UI** — Clean, responsive design with dark mode support, smooth animations
+- **Markdown Rendering** — Full GFM markdown with syntax highlighting, tables, and more
+- **Conversation History** — Sidebar with conversation management
+- **Copy, Rate, Regenerate** — Full interaction controls on every response
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16 (App Router) |
+| UI | React 19, Tailwind CSS v4, Lucide Icons |
+| AI | Vercel AI SDK v6 (multi-provider) |
+| Models | Anthropic Claude, OpenAI GPT-4o, Google Gemini |
+| Animations | Framer Motion |
+| Markdown | react-markdown + remark-gfm |
 
 ## Getting Started
 
-First, run the development server:
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/lemneya/Ihsan.git
+cd ihsan
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Set up environment variables
+
+Copy `.env.example` to `.env.local` and add your API keys:
+
+```bash
+cp .env.example .env.local
+```
+
+```env
+# Add at least one:
+ANTHROPIC_API_KEY=your_key_here
+OPENAI_API_KEY=your_key_here
+GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
+```
+
+### 4. Run the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to start using Ihsan.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/
+│   ├── api/chat/route.ts       # Streaming chat API (multi-model)
+│   ├── chat/[id]/page.tsx      # Chat conversation page
+│   ├── page.tsx                # Landing page with search
+│   ├── layout.tsx              # Root layout
+│   └── globals.css             # Global styles + dark mode
+├── components/
+│   ├── chat/
+│   │   ├── ChatInput.tsx       # Message input with tools
+│   │   ├── ChatMessage.tsx     # Message bubble with markdown
+│   │   └── ModelSelector.tsx   # Multi-model dropdown
+│   ├── layout/
+│   │   ├── Header.tsx          # App header
+│   │   └── Sidebar.tsx         # Conversation sidebar
+│   ├── search/
+│   │   └── SparkPage.tsx       # Genspark-inspired rich answer card
+│   └── ui/
+│       └── Button.tsx          # Reusable button component
+└── lib/
+    ├── models.ts               # Model configurations
+    ├── store.ts                # Simple state store
+    └── utils.ts                # Utility functions
+```
 
-## Learn More
+## Inspired By
 
-To learn more about Next.js, take a look at the following resources:
+- [Genspark](https://genspark.ai) — Multi-agent AI search engine with Sparkpages
+- [Perplexity](https://perplexity.ai) — AI-powered search with citations
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
