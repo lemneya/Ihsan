@@ -16,12 +16,12 @@ import { streamText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import {
   readConfig,
-  readMemory,
-  appendMemory,
   loadOperationalPersona,
 } from "./fs-adapter";
 import { agentTools, ihsanToolPrompts } from "../lib/agent-tools";
 import { buildSkillsContext } from "../lib/skill-loader";
+import { SkillRegistry } from "./skill-registry";
+import { MemoryManager } from "./memory-manager";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -47,9 +47,12 @@ export class IhsanAgent {
   private soul = "";
   private operationalPrompt = "";
   private controller: AbortController | null = null;
+  private skillRegistry: SkillRegistry;
+  private memory = new MemoryManager();
 
-  constructor(socket: Socket) {
+  constructor(socket: Socket, registry: SkillRegistry) {
     this.socket = socket;
+    this.skillRegistry = registry;
   }
 
   // ── wakeUp — read personality from disk ───────────────────────────
@@ -63,6 +66,20 @@ export class IhsanAgent {
 
     // Read operational instructions from src/lib/agent-persona/
     this.operationalPrompt = await loadOperationalPersona();
+
+    // Load persistent memory from disk
+    const memorySummary = await this.memory.getSummary();
+    this.socket.emit("agent:log", {
+      message: `[Memory] Context loaded: ${memorySummary}`,
+    });
+
+    // Report dynamic skills from the shared global registry (pre-loaded at server start)
+    const dynamicSkills = this.skillRegistry.getEnabledSkills();
+    if (dynamicSkills.length > 0) {
+      this.socket.emit("agent:log", {
+        message: `Dynamic skills available: ${dynamicSkills.map((s) => s.name).join(", ")}`,
+      });
+    }
 
     const nameMatch = this.identity.match(/\*\*Name:\*\*\s*(.+)/);
     const name = nameMatch ? nameMatch[1].trim() : "Ihsan Agent";
@@ -81,10 +98,10 @@ export class IhsanAgent {
     // 2. Operational persona (AGENTS.md, TOOLS.md, etc.)
     if (this.operationalPrompt) sections.push(this.operationalPrompt);
 
-    // 3. User memory context (from /memory — persisted across restarts)
-    const userContext = await readMemory("user.md");
-    if (userContext.trim()) {
-      sections.push(`[USER MEMORY]\n${userContext}`);
+    // 3. Persistent memory context (user facts + conversation history)
+    const memoryContext = await this.memory.loadContext();
+    if (memoryContext.formatted) {
+      sections.push(memoryContext.formatted);
     }
 
     // 4. Deep research prefix
@@ -103,6 +120,10 @@ export class IhsanAgent {
       if (skillsContext) sections.push(skillsContext);
     }
 
+    // 6. Dynamic skills context (hot-loaded from /skills/*.ts)
+    const dynamicContext = this.skillRegistry.getSkillsPromptContext();
+    if (dynamicContext) sections.push(dynamicContext);
+
     return sections.join("\n\n---\n\n");
   }
 
@@ -118,19 +139,25 @@ export class IhsanAgent {
 
     const systemPrompt = await this.buildSystemPrompt(options);
 
-    // Filter tools to only enabled ones
+    // Filter tools to only enabled ones, then merge dynamic skills
     const enabledTools = this.getEnabledTools(options.skills || []);
+    const dynamicTools = this.skillRegistry.getToolDefinitions();
+    const allTools = { ...enabledTools, ...dynamicTools };
 
     const model = anthropic("claude-sonnet-4-5-20250929");
 
     let stepIndex = 0;
+    let fullAssistantText = "";
+
+    // Save user prompt to conversation history
+    await this.memory.saveInteraction("user", prompt.trim());
 
     try {
       const result = streamText({
         model,
         system: systemPrompt,
         messages: [{ role: "user", content: prompt.trim() }],
-        tools: enabledTools as typeof agentTools,
+        tools: allTools as typeof agentTools,
         stopWhen: stepCountIs(maxSteps),
         maxOutputTokens: isDeep ? 32000 : 16000,
         abortSignal: this.controller.signal,
@@ -141,6 +168,7 @@ export class IhsanAgent {
 
         switch (event.type) {
           case "text-delta":
+            fullAssistantText += event.text;
             this.socket.emit("agent:text-delta", { text: event.text });
             break;
 
@@ -193,16 +221,10 @@ export class IhsanAgent {
         }
       }
 
-      // Log to short-term memory on disk
-      await appendMemory(
-        "short_term.json",
-        JSON.stringify({
-          timestamp: new Date().toISOString(),
-          prompt: prompt.trim().slice(0, 200),
-          steps: stepIndex,
-          status: "completed",
-        })
-      );
+      // Save assistant response to conversation history
+      if (fullAssistantText.trim()) {
+        await this.memory.saveInteraction("assistant", fullAssistantText.trim());
+      }
     } catch (err) {
       if (this.controller.signal.aborted) return;
       const message = err instanceof Error ? err.message : "Stream error";

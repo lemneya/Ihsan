@@ -1,0 +1,203 @@
+/**
+ * memory-manager.ts — The Cortex
+ *
+ * Persistent memory layer for the IhsanAgent. Handles:
+ *   - User facts (long-term):  memory/user.md
+ *   - Conversation history (short-term): memory/short_term.json
+ *
+ * Memory survives server restarts. The agent remembers your name,
+ * preferences, and recent conversation context across sessions.
+ *
+ * Design decisions:
+ *   - Short-term memory is capped at MAX_TURNS to prevent unbounded growth.
+ *   - User facts are appended as markdown bullets — human-readable on disk.
+ *   - loadContext() returns a pre-formatted string ready for the system prompt.
+ *   - All I/O goes through fs/promises — no in-memory caching between calls.
+ */
+
+import { readFile, writeFile, appendFile } from "node:fs/promises";
+import { join } from "node:path";
+
+// ─── Constants ──────────────────────────────────────────────────────
+
+const MEMORY_DIR = join(process.cwd(), "memory");
+const USER_FACTS_FILE = join(MEMORY_DIR, "user.md");
+const SHORT_TERM_FILE = join(MEMORY_DIR, "short_term.json");
+const MAX_TURNS = 20;
+const LOG_PREFIX = "[Memory]";
+
+// ─── Types ──────────────────────────────────────────────────────────
+
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+export interface MemoryContext {
+  userFacts: string;
+  conversationHistory: ConversationTurn[];
+  formatted: string; // ready for the system prompt
+}
+
+// ─── MemoryManager ──────────────────────────────────────────────────
+
+export class MemoryManager {
+
+  // ── Load Context ────────────────────────────────────────────────
+
+  /**
+   * Load full memory context from disk.
+   * Returns user facts + recent conversation history,
+   * pre-formatted for injection into the system prompt.
+   */
+  async loadContext(): Promise<MemoryContext> {
+    const userFacts = await this.readUserFacts();
+    const conversationHistory = await this.readConversationHistory();
+
+    const sections: string[] = [];
+
+    // User facts section — extract real fact lines (skip template placeholders)
+    const realFacts = userFacts
+      .split("\n")
+      .filter((line) => /^- /.test(line) && !line.includes("(none yet)"))
+      .join("\n");
+    if (realFacts.trim()) {
+      sections.push(`[USER MEMORY — Long-Term Facts]\n${realFacts}`);
+    }
+
+    // Conversation history section
+    if (conversationHistory.length > 0) {
+      const historyLines = conversationHistory.map((turn) => {
+        const prefix = turn.role === "user" ? "User" : "Ihsan";
+        // Truncate long messages to keep prompt lean
+        const content = turn.content.length > 300
+          ? turn.content.slice(0, 300) + "..."
+          : turn.content;
+        return `[${prefix}]: ${content}`;
+      });
+      sections.push(
+        `[CONVERSATION HISTORY — Recent ${conversationHistory.length} turns]\n` +
+        historyLines.join("\n")
+      );
+    }
+
+    return {
+      userFacts,
+      conversationHistory,
+      formatted: sections.length > 0 ? sections.join("\n\n---\n\n") : "",
+    };
+  }
+
+  // ── Save Interaction ────────────────────────────────────────────
+
+  /**
+   * Append a conversation turn to short-term memory.
+   * Automatically trims to MAX_TURNS (oldest entries dropped).
+   */
+  async saveInteraction(role: "user" | "assistant", content: string): Promise<void> {
+    if (!content.trim()) return;
+
+    const history = await this.readConversationHistory();
+
+    history.push({
+      role,
+      content: content.trim(),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Trim to last MAX_TURNS entries
+    const trimmed = history.length > MAX_TURNS
+      ? history.slice(history.length - MAX_TURNS)
+      : history;
+
+    try {
+      await writeFile(SHORT_TERM_FILE, JSON.stringify(trimmed, null, 2) + "\n", "utf-8");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`${LOG_PREFIX} Failed to save interaction: ${message}`);
+    }
+  }
+
+  // ── Update User Fact ────────────────────────────────────────────
+
+  /**
+   * Append a learned fact to the long-term user memory file.
+   * Facts are stored as markdown bullet points for human readability.
+   *
+   * Example: "User prefers dark mode" → appends "- User prefers dark mode\n"
+   */
+  async updateUserFact(fact: string): Promise<void> {
+    if (!fact.trim()) return;
+
+    const cleanFact = fact.trim();
+    // Ensure it starts with a bullet
+    const formatted = cleanFact.startsWith("- ") ? cleanFact : `- ${cleanFact}`;
+
+    try {
+      // Read existing content to avoid duplicates
+      const existing = await this.readUserFacts();
+
+      // Skip if the fact already exists (exact match, case-insensitive)
+      if (existing.toLowerCase().includes(cleanFact.toLowerCase())) {
+        console.log(`${LOG_PREFIX} Fact already known: "${cleanFact}"`);
+        return;
+      }
+
+      await appendFile(USER_FACTS_FILE, `${formatted}\n`, "utf-8");
+      console.log(`${LOG_PREFIX} Learned new fact: "${cleanFact}"`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`${LOG_PREFIX} Failed to save user fact: ${message}`);
+    }
+  }
+
+  // ── Summary ─────────────────────────────────────────────────────
+
+  /**
+   * Return a short summary string for logging.
+   */
+  async getSummary(): Promise<string> {
+    const facts = await this.readUserFacts();
+    const history = await this.readConversationHistory();
+
+    // Count real facts (exclude template placeholders)
+    const realFactCount = facts
+      .split("\n")
+      .filter((line) => /^- /.test(line) && !line.includes("(none yet)"))
+      .length;
+
+    return `${realFactCount} fact(s), ${history.length} conversation turn(s)`;
+  }
+
+  // ── Private Helpers ─────────────────────────────────────────────
+
+  private async readUserFacts(): Promise<string> {
+    try {
+      return await readFile(USER_FACTS_FILE, "utf-8");
+    } catch {
+      return "";
+    }
+  }
+
+  private async readConversationHistory(): Promise<ConversationTurn[]> {
+    try {
+      const raw = await readFile(SHORT_TERM_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+
+      // Handle both old format (metadata-only) and new format (conversation turns)
+      if (!Array.isArray(parsed)) return [];
+
+      // Filter to only valid conversation turns (skip old metadata entries)
+      return parsed.filter(
+        (entry: any) =>
+          entry &&
+          typeof entry === "object" &&
+          (entry.role === "user" || entry.role === "assistant") &&
+          typeof entry.content === "string"
+      );
+    } catch {
+      return [];
+    }
+  }
+}

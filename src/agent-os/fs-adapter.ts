@@ -16,17 +16,31 @@ const ROOT = process.cwd();
 const CONFIG_DIR = join(ROOT, "config");
 const MEMORY_DIR = join(ROOT, "memory");
 const SKILLS_DIR = join(ROOT, "skills");
+const INPUTS_DIR = join(ROOT, "inputs");
 const PERSONA_DIR = join(ROOT, "src", "lib", "agent-persona");
 
 // ─── Bootstrap ──────────────────────────────────────────────────────
 
 /** Ensure all AgentOS directories exist on disk. Call once at startup. */
 export async function ensureDirs(): Promise<void> {
-  for (const dir of [CONFIG_DIR, MEMORY_DIR, SKILLS_DIR]) {
+  for (const dir of [CONFIG_DIR, MEMORY_DIR, SKILLS_DIR, INPUTS_DIR]) {
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
     }
   }
+}
+
+/** Ensure the /inputs upload directory exists. Returns the absolute path. */
+export async function ensureUploadsDir(): Promise<string> {
+  if (!existsSync(INPUTS_DIR)) {
+    await mkdir(INPUTS_DIR, { recursive: true });
+  }
+  return INPUTS_DIR;
+}
+
+/** Get the absolute path to the /inputs directory */
+export function getInputsDir(): string {
+  return INPUTS_DIR;
 }
 
 // ─── Config (/config) ───────────────────────────────────────────────

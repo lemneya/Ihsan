@@ -14,6 +14,6 @@
       "@/*": ["../src/*"]
     }
   },
-  "include": ["./**/*.ts", "../src/agent-os/**/*.ts", "../src/lib/agent-tools.ts", "../src/lib/skill-loader.ts", "../src/lib/html-to-text.ts"],
+  "include": ["./**/*.ts", "../src/agent-os/**/*.ts", "../src/lib/agent-tools.ts", "../src/lib/skill-loader.ts", "../src/lib/html-to-text.ts", "../skills/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

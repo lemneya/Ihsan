@@ -8,8 +8,13 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import multer from "multer";
 import { IhsanAgent } from "../src/agent-os/agent";
-import { ensureDirs } from "../src/agent-os/fs-adapter";
+import { ensureDirs, getInputsDir } from "../src/agent-os/fs-adapter";
+import { SkillRegistry } from "../src/agent-os/skill-registry";
+
+// ─── Global Skill Registry (singleton — shared across all agents) ────
+const globalRegistry = new SkillRegistry();
 
 // ─── Express + Socket.io Setup ──────────────────────────────────────
 
@@ -128,12 +133,24 @@ app.get("/api/connectors", (_req, res) => {
   res.json(connectors);
 });
 
-// ─── File Upload (mock) ─────────────────────────────────────────────
+// ─── File Upload (real — saves to /inputs) ──────────────────────────
 
-app.post("/api/upload", (_req, res) => {
-  setTimeout(() => {
-    res.json({ success: true, fileId: `file_${Date.now()}`, message: "File processed successfully" });
-  }, 1000);
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, getInputsDir()),
+    filename: (_req, file, cb) => cb(null, file.originalname),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+});
+
+app.post("/api/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "No file provided" });
+    return;
+  }
+  const filepath = `inputs/${req.file.filename}`;
+  console.log(`[Upload] File saved: ${filepath} (${req.file.size} bytes)`);
+  res.json({ success: true, filepath, message: "File received." });
 });
 
 // ─── Skills Data + API ──────────────────────────────────────────────
@@ -159,7 +176,9 @@ const skills: Skill[] = [
 ];
 
 app.get("/api/skills", (_req, res) => {
-  res.json(skills);
+  // Merge hardcoded platform skills with dynamic skills from the registry
+  const dynamicSkills = globalRegistry.toApiResponse();
+  res.json([...skills, ...dynamicSkills]);
 });
 
 // Core tools always available (never gated by skills)
@@ -168,10 +187,15 @@ const CORE_TOOLS = ["web_search", "web_fetch", "run_javascript", "create_artifac
 /** Returns de-duplicated list of tool names the agent may use right now */
 function getEnabledToolNames(): string[] {
   const enabled = new Set<string>(CORE_TOOLS);
+  // Hardcoded platform skills
   for (const skill of skills) {
     if (skill.enabled) {
       for (const t of skill.tools) enabled.add(t);
     }
+  }
+  // Dynamic skills from the registry
+  for (const skill of globalRegistry.getEnabledSkills()) {
+    enabled.add(skill.name);
   }
   return [...enabled];
 }
@@ -185,13 +209,24 @@ app.get("/api/skills/enabled-tools", (_req, res) => {
 });
 
 app.put("/api/skills/:id/toggle", (req, res) => {
-  const skill = skills.find((s) => s.id === req.params.id);
-  if (skill) {
-    skill.enabled = !skill.enabled;
-    res.json({ success: true, skill });
-  } else {
-    res.status(404).json({ error: "Skill not found" });
+  const id = req.params.id;
+
+  // First check hardcoded platform skills
+  const platformSkill = skills.find((s) => s.id === id);
+  if (platformSkill) {
+    platformSkill.enabled = !platformSkill.enabled;
+    res.json({ success: true, skill: platformSkill });
+    return;
   }
+
+  // Then check dynamic skills in the registry
+  const toggled = globalRegistry.toggleSkill(id);
+  if (toggled) {
+    res.json({ success: true, skill: { id, name: toggled.name, enabled: toggled.enabled } });
+    return;
+  }
+
+  res.status(404).json({ error: "Skill not found" });
 });
 
 // ─── Integrations Data + API ─────────────────────────────────────────
@@ -254,8 +289,8 @@ io.on("connection", async (socket) => {
     socket.emit("agent:heartbeat");
   }, 15000);
 
-  // Instantiate the agent for this connection and wake it up
-  const agent = new IhsanAgent(socket);
+  // Instantiate the agent for this connection (shared global registry) and wake it up
+  const agent = new IhsanAgent(socket, globalRegistry);
   agents.set(socket.id, agent);
 
   try {
@@ -313,10 +348,13 @@ io.on("connection", async (socket) => {
 
 const PORT = parseInt(process.env.WS_PORT || "3001", 10);
 
-// Ensure AgentOS directories exist before accepting connections
-ensureDirs().then(() => {
-  httpServer.listen(PORT, () => {
-    console.log(`[AgentOS] Directories verified (config/, memory/, skills/)`);
-    console.log(`[WS] Ihsan WebSocket server running on http://localhost:${PORT}`);
+// Ensure AgentOS directories exist, load skills, then start the server
+ensureDirs()
+  .then(() => globalRegistry.loadSkills())
+  .then(() => {
+    console.log(`\uD83D\uDD0C [Ihsan OS] Global Skill Registry Loaded`);
+    httpServer.listen(PORT, () => {
+      console.log(`[AgentOS] Directories verified (config/, memory/, skills/)`);
+      console.log(`[WS] Ihsan WebSocket server running on http://localhost:${PORT}`);
+    });
   });
-});
