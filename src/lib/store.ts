@@ -95,7 +95,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Theme
-      theme: "system",
+      theme: "light",
       setTheme: (theme) => set({ theme }),
 
       // Sidebar

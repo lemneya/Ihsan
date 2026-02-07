@@ -62,7 +62,7 @@ body {
 
 /* Selection color */
 ::selection {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: #dbeafe;
 }
 
 /* Custom scrollbar */
@@ -81,6 +81,21 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
+}
+
+/* Custom scrollbar (scoped) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 /* Markdown content styles */
@@ -221,6 +236,10 @@ body {
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
 }
 
 /* Animated gradient text */
