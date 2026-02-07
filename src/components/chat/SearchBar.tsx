@@ -10,6 +10,7 @@ import {
   User,
   Link as LinkIcon,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 interface SearchBarProps {
   onSubmit: (message: string) => void;
@@ -18,6 +19,7 @@ interface SearchBarProps {
 
 export default function SearchBar({ onSubmit, isLoading = false }: SearchBarProps) {
   const [input, setInput] = useState("");
+  const [bannerVisible, setBannerVisible] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -54,23 +56,23 @@ export default function SearchBar({ onSubmit, isLoading = false }: SearchBarProp
           placeholder="Ask anything, create anything"
           rows={1}
           disabled={isLoading}
-          className="w-full resize-none bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-zinc-500 px-5 pt-4 pb-2 text-base text-gray-900 dark:text-white"
+          className="w-full resize-none bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-zinc-500 px-4 sm:px-5 pt-4 pb-2 text-base text-gray-900 dark:text-white"
         />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center justify-between px-4 pb-3">
+        <div className="flex items-center justify-between px-3 sm:px-4 pb-3">
           {/* Left icons */}
           <div className="flex items-center gap-1">
             <button
               type="button"
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Mention"
             >
               <User className="h-4 w-4" />
             </button>
             <button
               type="button"
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Add link"
             >
               <LinkIcon className="h-4 w-4" />
@@ -91,14 +93,16 @@ export default function SearchBar({ onSubmit, isLoading = false }: SearchBarProp
 
             <button
               type="button"
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              onClick={() => toast("File attachments coming soon", { icon: "📎" })}
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Attach file"
             >
               <Paperclip className="h-4 w-4" />
             </button>
             <button
               type="button"
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              onClick={() => toast("Voice input coming soon", { icon: "🎤" })}
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Voice input"
             >
               <Mic className="h-4 w-4" />
@@ -107,7 +111,7 @@ export default function SearchBar({ onSubmit, isLoading = false }: SearchBarProp
               type="submit"
               disabled={!input.trim() || isLoading}
               className={cn(
-                "p-2 rounded-lg transition-colors cursor-pointer",
+                "p-2 rounded-lg transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center",
                 input.trim() && !isLoading
                   ? "text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800"
                   : "text-gray-300 dark:text-zinc-600"
@@ -121,18 +125,24 @@ export default function SearchBar({ onSubmit, isLoading = false }: SearchBarProp
       </div>
 
       {/* Integration banner */}
-      <div className="flex items-center justify-center gap-3 mt-3 text-xs text-gray-500 dark:text-zinc-500">
-        <div className="flex items-center gap-2">
-          <span className="text-red-500 text-sm">✉</span>
-          <span className="text-blue-500 text-sm">📊</span>
-          <span className="text-green-500 text-sm">📝</span>
-          <span className="text-yellow-500 text-sm">📁</span>
+      {bannerVisible && (
+        <div className="flex items-center justify-center gap-3 mt-3 text-xs text-gray-500 dark:text-zinc-500">
+          <div className="flex items-center gap-2">
+            <span className="text-red-500 text-sm">✉</span>
+            <span className="text-blue-500 text-sm">📊</span>
+            <span className="text-green-500 text-sm">📝</span>
+            <span className="text-yellow-500 text-sm">📁</span>
+          </div>
+          <span>Ihsan supports personalized tools</span>
+          <button
+            type="button"
+            onClick={() => setBannerVisible(false)}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
-        <span>Ihsan supports personalized tools</span>
-        <button type="button" className="text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 cursor-pointer">
-          ✕
-        </button>
-      </div>
+      )}
     </form>
   );
 }

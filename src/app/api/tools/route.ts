@@ -1,24 +1,51 @@
 import { streamText, UIMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const maxDuration = 120;
 
-const toolSystemPrompts: Record<string, string> = {
-  slides: `You are an AI presentation creator. When the user gives you a topic, create a full slide deck in markdown format.
+// Load SSOT spec files for slides skill
+function loadSkillFile(filename: string): string {
+  try {
+    return readFileSync(join(process.cwd(), "skills", "slides", filename), "utf-8");
+  } catch {
+    return "";
+  }
+}
 
-Format each slide as:
+const SLIDES_SPEC = loadSkillFile("SLIDES_SPEC.md");
+const QUALITY_GATES = loadSkillFile("QUALITY_GATES.md");
+const STYLE_TOKENS_RAW = loadSkillFile("STYLE_TOKENS.json");
+
+const toolSystemPrompts: Record<string, string> = {
+  slides: `You are Ihsan Slides — a professional presentation engine.
+You MUST follow the SLIDES_SPEC (SSOT) exactly. Do not improvise structure or style.
+
+${SLIDES_SPEC}
+
+${QUALITY_GATES}
+
+## Style Tokens
+${STYLE_TOKENS_RAW}
+
+## Output Format
+Create a full slide deck in markdown. Format each slide as:
 ---
 ## Slide [number]: [Title]
-[Content with bullet points, key facts, and clear structure]
+- Bullet point (max 12 words)
+- Another bullet (max 6 bullets per slide)
+[Image: a vivid, specific description of a relevant professional image]
+**Speaker Notes:** brief talking points
 ---
 
-Include:
-- A title slide
-- 5-10 content slides
-- A conclusion/summary slide
-- Speaker notes after each slide marked with "**Speaker Notes:** ..."
-
-Make slides visually descriptive with bullet points, not walls of text. Suggest image descriptions in [brackets] where visuals would help.`,
+HARD RULES:
+- One idea per slide.
+- Max 6 bullets per slide, max 12 words per bullet.
+- Every slide MUST have an [Image: ...] tag with a specific, visual description.
+- Image descriptions must be vivid and concrete.
+- Include a Cover slide, structured content slides, and a Conclusion/Summary slide.
+- Follow the structure template that best matches the topic.`,
 
   sheets: `You are an AI spreadsheet/data analyst. When the user describes what data they need, generate it as a well-structured markdown table.
 
@@ -155,19 +182,21 @@ For each agent, explain capabilities, best use cases, and example prompts. Help 
 };
 
 function convertMessages(uiMessages: UIMessage[]) {
-  return uiMessages.map((msg) => {
-    const textParts = msg.parts?.filter(
-      (p): p is { type: "text"; text: string } => p.type === "text"
-    );
-    const textContent =
-      textParts?.map((p) => p.text).join("") ||
-      (msg as unknown as { content?: string }).content ||
-      "";
-    return {
-      role: msg.role as "user" | "assistant",
-      content: textContent,
-    };
-  });
+  return uiMessages
+    .map((msg) => {
+      const textParts = msg.parts?.filter(
+        (p): p is { type: "text"; text: string } => p.type === "text"
+      );
+      const textContent =
+        textParts?.map((p) => p.text).join("") ||
+        (msg as unknown as { content?: string }).content ||
+        "";
+      return {
+        role: msg.role as "user" | "assistant",
+        content: textContent,
+      };
+    })
+    .filter((msg) => msg.content.trim().length > 0);
 }
 
 export async function POST(req: Request) {

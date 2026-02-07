@@ -31,10 +31,10 @@ export default function ModelSelector({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
+        className="flex items-center gap-1 sm:gap-2 rounded-lg px-2 sm:px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
       >
         <span>{selected.icon}</span>
-        <span>{selected.name}</span>
+        <span className="hidden sm:inline">{selected.name}</span>
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 text-muted-foreground transition-transform",

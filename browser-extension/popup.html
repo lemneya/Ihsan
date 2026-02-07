@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ihsan Browser Agent</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">I</div>
+        <span class="logo-text">Ihsan</span>
+      </div>
+      <div class="header-badge">Browser Agent</div>
+    </header>
+
+    <!-- Settings bar -->
+    <div class="settings-bar" id="settings-bar">
+      <label class="settings-label">API URL:</label>
+      <input type="text" id="api-url" class="settings-input" value="http://localhost:3000" placeholder="http://localhost:3000">
+      <button id="save-settings" class="btn-sm">Save</button>
+    </div>
+
+    <!-- Page info -->
+    <div class="page-info" id="page-info">
+      <div class="page-status" id="page-status">
+        <div class="status-dot"></div>
+        <span id="page-title">Loading page...</span>
+      </div>
+      <span class="char-count" id="char-count"></span>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions" id="actions">
+      <button class="action-btn" data-action="summarize">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+        Summarize
+      </button>
+      <button class="action-btn" data-action="extract">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Extract
+      </button>
+      <button class="action-btn" data-action="explain">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/><path d="M12 18v4"/><path d="M8 22h8"/></svg>
+        Explain
+      </button>
+      <button class="action-btn" data-action="analyze">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+        Analyze
+      </button>
+      <button class="action-btn" data-action="action-items">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 11H6l4-8"/><path d="M13 13h5l-4 8"/><path d="M2 12h20"/></svg>
+        Actions
+      </button>
+      <button class="action-btn" data-action="translate">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+        Translate
+      </button>
+    </div>
+
+    <!-- Question input -->
+    <div class="question-area">
+      <input type="text" id="question-input" class="question-input" placeholder="Ask a question about this page...">
+      <button id="ask-btn" class="ask-btn" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+      </button>
+    </div>
+
+    <!-- Result -->
+    <div class="result-area" id="result-area" style="display: none;">
+      <div class="result-header">
+        <span class="result-label" id="result-label">Summary</span>
+        <div class="result-actions">
+          <button id="copy-btn" class="icon-btn" title="Copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <button id="open-ihsan-btn" class="icon-btn" title="Open in Ihsan">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="result-content" id="result-content"></div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading" id="loading" style="display: none;">
+      <div class="loading-dots">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+      <span>Analyzing...</span>
+      <button id="stop-btn" class="stop-btn">Stop</button>
+    </div>
+
+    <!-- Error -->
+    <div class="error" id="error" style="display: none;">
+      <span id="error-text"></span>
+      <button id="retry-btn" class="btn-sm">Retry</button>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <button id="settings-toggle" class="footer-btn">Settings</button>
+      <a id="open-full" class="footer-btn" href="http://localhost:3000/tools/browser-agent" target="_blank">Open Ihsan</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

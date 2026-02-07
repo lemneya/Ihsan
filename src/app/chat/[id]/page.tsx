@@ -3,16 +3,24 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useSearchParams } from "next/navigation";
-import { useState, useRef, useEffect, useMemo, use } from "react";
+import { useState, useRef, useEffect, useMemo, use, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, ArrowLeft, Share, RotateCcw } from "lucide-react";
+import { Sparkles, ArrowLeft, Share, RotateCcw, Square, Menu } from "lucide-react";
 import Link from "next/link";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessage from "@/components/chat/ChatMessage";
 import SparkPage from "@/components/search/SparkPage";
+import ThinkingIndicator from "@/components/chat/ThinkingIndicator";
+import ErrorMessage from "@/components/chat/ErrorMessage";
+import ScrollToBottom from "@/components/chat/ScrollToBottom";
+import SuggestedPrompts from "@/components/chat/SuggestedPrompts";
+import WelcomeScreen from "@/components/chat/WelcomeScreen";
+import ExportButton from "@/components/chat/ExportButton";
 import ModelSelector from "@/components/chat/ModelSelector";
 import Button from "@/components/ui/Button";
 import { models, defaultModel, ModelConfig } from "@/lib/models";
+import { useAppStore, StoredMessage } from "@/lib/store";
+import toast from "react-hot-toast";
 
 function parseSparkPage(content: string) {
   const hasStructure = content.includes("## ") && content.length > 300;
@@ -62,7 +70,6 @@ export default function ChatPage({
   const { id } = use(params);
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
-  const providerParam = searchParams.get("provider") || "anthropic";
   const modelParam =
     searchParams.get("model") || "claude-sonnet-4-5-20250929";
 
@@ -71,7 +78,24 @@ export default function ChatPage({
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatAreaRef = useRef<HTMLDivElement>(null);
   const initialSent = useRef(false);
+
+  const { addConversation, getConversation, setSidebarOpen } = useAppStore();
+
+  // Load saved conversation if exists and no query param
+  const savedConv = getConversation(id);
+  const savedMessages = useMemo(() => {
+    if (!initialQuery && savedConv && savedConv.messages.length > 0) {
+      return savedConv.messages.map((m) => ({
+        id: m.id,
+        role: m.role as "system" | "user" | "assistant",
+        parts: [{ type: "text" as const, text: m.content }],
+      }));
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const transport = useMemo(
     () =>
@@ -85,8 +109,12 @@ export default function ChatPage({
     [selectedModel]
   );
 
-  const { messages, status, sendMessage, regenerate } = useChat({
+  const { messages, status, sendMessage, regenerate, stop, error, clearError, setMessages } = useChat({
     transport,
+    messages: savedMessages,
+    onError: (err) => {
+      console.error("[Ihsan Chat Error]", err);
+    },
   });
 
   const isLoading = status === "submitted" || status === "streaming";
@@ -104,28 +132,97 @@ export default function ChatPage({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Persist conversation
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const storedMessages: StoredMessage[] = messages
+      .map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content:
+          m.parts
+            ?.filter((p) => p.type === "text")
+            .map((p) => p.text)
+            .join("") || "",
+      }))
+      .filter((m) => m.content.trim().length > 0);
+
+    const firstUserMsg = storedMessages.find((m) => m.role === "user");
+    const title = firstUserMsg
+      ? firstUserMsg.content.substring(0, 60) + (firstUserMsg.content.length > 60 ? "..." : "")
+      : "New conversation";
+
+    addConversation({
+      id,
+      title,
+      createdAt: Date.now(),
+      model: selectedModel,
+      messages: storedMessages,
+    });
+  }, [messages, id, selectedModel, addConversation]);
+
   const handleSubmit = (message: string) => {
+    if (error) clearError();
     sendMessage({ text: message });
   };
 
-  const lastAssistantMessage = [...messages]
-    .reverse()
-    .find((m) => m.role === "assistant");
-  const sparkPage =
-    lastAssistantMessage && !isLoading
-      ? parseSparkPage(
-          lastAssistantMessage.parts
-            ?.filter((p) => p.type === "text")
-            .map((p) => p.text)
-            .join("") || ""
-        )
-      : null;
+  const handleEditMessage = useCallback(
+    (messageId: string, newContent: string) => {
+      // Find the message index
+      const msgIndex = messages.findIndex((m) => m.id === messageId);
+      if (msgIndex === -1) return;
+
+      // Truncate messages to the edited message (remove everything after it)
+      const truncated = messages.slice(0, msgIndex);
+
+      // Update messages and send the edited content
+      setMessages(truncated);
+
+      // Small delay to let state settle, then send
+      setTimeout(() => {
+        sendMessage({ text: newContent });
+      }, 50);
+    },
+    [messages, setMessages, sendMessage]
+  );
+
+  const handleStop = useCallback(() => {
+    stop();
+  }, [stop]);
+
+  const handleShare = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    toast.success("Link copied to clipboard");
+  };
+
+  // Build stored messages for export
+  const storedMessages: StoredMessage[] = messages.map((m) => ({
+    id: m.id,
+    role: m.role as "user" | "assistant",
+    content:
+      m.parts
+        ?.filter((p) => p.type === "text")
+        .map((p) => p.text)
+        .join("") || "",
+  }));
+
+  const firstUserMsg = storedMessages.find((m) => m.role === "user");
+  const conversationTitle = firstUserMsg
+    ? firstUserMsg.content.substring(0, 60)
+    : "Conversation";
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen relative">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
           <Link href="/">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
@@ -135,22 +232,28 @@ export default function ChatPage({
             <div className="h-7 w-7 rounded-lg bg-accent flex items-center justify-center">
               <Sparkles className="h-3.5 w-3.5 text-white" />
             </div>
-            <span className="font-semibold">Ihsan</span>
+            <span className="font-semibold hidden sm:inline">Ihsan</span>
           </Link>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <ModelSelector
             selected={selectedModel}
             onChange={setSelectedModel}
           />
-          <Button variant="ghost" size="icon" title="Share">
+          {storedMessages.length > 0 && (
+            <ExportButton title={conversationTitle} messages={storedMessages} />
+          )}
+          <Button variant="ghost" size="icon" title="Share" onClick={handleShare}>
             <Share className="h-4 w-4" />
           </Button>
         </div>
       </header>
 
       {/* Chat area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={chatAreaRef}>
+        {messages.length === 0 && !isLoading ? (
+          <WelcomeScreen onSelect={handleSubmit} />
+        ) : (
         <div className="max-w-3xl mx-auto px-4 py-6">
           <AnimatePresence>
             {messages.map((message, i) => {
@@ -193,6 +296,11 @@ export default function ChatPage({
                           ? selectedModel.name
                           : undefined
                       }
+                      onEdit={
+                        message.role === "user" && !isLoading
+                          ? (newContent) => handleEditMessage(message.id, newContent)
+                          : undefined
+                      }
                     />
                   )}
                 </motion.div>
@@ -200,13 +308,24 @@ export default function ChatPage({
             })}
           </AnimatePresence>
 
-          {/* Loading state */}
-          {isLoading && messages[messages.length - 1]?.role === "user" && (
-            <SparkPage title="" summary="" isLoading={true} />
+          {/* Thinking indicator */}
+          {status === "submitted" && messages[messages.length - 1]?.role === "user" && (
+            <ThinkingIndicator />
+          )}
+
+          {/* Error display */}
+          {error && (
+            <ErrorMessage
+              error={error.message || "Something went wrong. Please try again."}
+              onRetry={() => {
+                clearError();
+                regenerate();
+              }}
+            />
           )}
 
           {/* Retry button */}
-          {!isLoading && messages.length > 1 && (
+          {!isLoading && !error && messages.length > 1 && (
             <div className="flex justify-center mb-4">
               <Button
                 variant="ghost"
@@ -220,9 +339,38 @@ export default function ChatPage({
             </div>
           )}
 
+          {/* Suggested follow-ups */}
+          {!isLoading && !error && messages.length > 1 && messages[messages.length - 1]?.role === "assistant" && (() => {
+            const lastMsg = messages[messages.length - 1];
+            const lastText = lastMsg.parts?.filter((p) => p.type === "text").map((p) => p.text).join("") || "";
+            return lastText ? (
+              <SuggestedPrompts
+                lastAssistantContent={lastText}
+                onSelect={handleSubmit}
+              />
+            ) : null;
+          })()}
+
           <div ref={messagesEndRef} />
         </div>
+        )}
       </div>
+
+      {/* Scroll to bottom */}
+      <ScrollToBottom containerRef={chatAreaRef} />
+
+      {/* Stop button */}
+      {isLoading && (
+        <div className="flex justify-center -mt-2 mb-2">
+          <button
+            onClick={handleStop}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border shadow-sm text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <Square className="h-3 w-3 fill-current" />
+            Stop generating
+          </button>
+        </div>
+      )}
 
       {/* Input */}
       <div className="border-t border-border bg-background">
@@ -230,7 +378,9 @@ export default function ChatPage({
           <ChatInput
             onSubmit={handleSubmit}
             isLoading={isLoading}
+            onStop={handleStop}
             placeholder="Ask a follow-up question..."
+            autoFocus
           />
         </div>
       </div>

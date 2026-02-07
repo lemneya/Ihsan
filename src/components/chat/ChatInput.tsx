@@ -2,23 +2,34 @@
 
 import { useState, useRef, useEffect, FormEvent } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Paperclip, Globe, Sparkles } from "lucide-react";
+import { ArrowUp, Paperclip, Globe, Sparkles, Square } from "lucide-react";
+import toast from "react-hot-toast";
 
 interface ChatInputProps {
   onSubmit: (message: string) => void;
   isLoading?: boolean;
+  onStop?: () => void;
   placeholder?: string;
   size?: "default" | "large";
+  autoFocus?: boolean;
 }
 
 export default function ChatInput({
   onSubmit,
   isLoading = false,
+  onStop,
   placeholder = "Ask anything...",
   size = "default",
+  autoFocus = false,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (autoFocus && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [autoFocus]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -43,6 +54,11 @@ export default function ChatInput({
       e.preventDefault();
       handleSubmit(e);
     }
+    // Cmd+Enter also submits
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
   };
 
   return (
@@ -64,52 +80,68 @@ export default function ChatInput({
           className={cn(
             "w-full resize-none bg-transparent outline-none placeholder:text-muted-foreground",
             size === "large"
-              ? "px-6 pt-5 pb-2 text-lg"
-              : "px-4 pt-3 pb-2 text-sm"
+              ? "px-4 sm:px-6 pt-5 pb-2 text-base sm:text-lg"
+              : "px-3 sm:px-4 pt-3 pb-2 text-sm"
           )}
         />
         <div
           className={cn(
             "flex items-center justify-between",
-            size === "large" ? "px-4 pb-4" : "px-3 pb-2.5"
+            size === "large" ? "px-3 sm:px-4 pb-4" : "px-2 sm:px-3 pb-2.5"
           )}
         >
           <div className="flex items-center gap-1">
             <button
               type="button"
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              onClick={() => toast("File attachments coming soon", { icon: "📎" })}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Attach file"
             >
               <Paperclip className="h-4 w-4" />
             </button>
             <button
               type="button"
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              onClick={() => toast("Web search coming soon", { icon: "🌐" })}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Search the web"
             >
               <Globe className="h-4 w-4" />
             </button>
             <button
               type="button"
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
               title="Use Sparkpage"
             >
               <Sparkles className="h-4 w-4" />
             </button>
           </div>
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className={cn(
-              "flex items-center justify-center rounded-xl transition-all cursor-pointer",
-              size === "large" ? "h-10 w-10" : "h-8 w-8",
-              input.trim() && !isLoading
-                ? "bg-accent text-white hover:bg-accent-dark"
-                : "bg-muted text-muted-foreground"
-            )}
-          >
-            <ArrowUp className={size === "large" ? "h-5 w-5" : "h-4 w-4"} />
-          </button>
+          {isLoading && onStop ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className={cn(
+                "flex items-center justify-center rounded-xl transition-all cursor-pointer bg-red-500 text-white hover:bg-red-600",
+                size === "large" ? "h-10 w-10" : "h-8 w-8"
+              )}
+              title="Stop generating"
+            >
+              <Square className={cn(size === "large" ? "h-4 w-4" : "h-3 w-3", "fill-current")} />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className={cn(
+                "flex items-center justify-center rounded-xl transition-all cursor-pointer",
+                size === "large" ? "h-10 w-10" : "h-8 w-8",
+                input.trim() && !isLoading
+                  ? "bg-accent text-white hover:bg-accent-dark"
+                  : "bg-muted text-muted-foreground"
+              )}
+            >
+              <ArrowUp className={size === "large" ? "h-5 w-5" : "h-4 w-4"} />
+            </button>
+          )}
         </div>
       </div>
       <p

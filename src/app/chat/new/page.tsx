@@ -3,15 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
-import SearchBar from "@/components/chat/SearchBar";
 import { defaultModel, ModelConfig } from "@/lib/models";
 import ModelSelector from "@/components/chat/ModelSelector";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { Menu } from "lucide-react";
 import Link from "next/link";
+import { useAppStore } from "@/lib/store";
+import { useSidebarOffset } from "@/hooks/useSidebarOffset";
+import WelcomeScreen from "@/components/chat/WelcomeScreen";
+import ChatInput from "@/components/chat/ChatInput";
 
 export default function NewChatPage() {
   const router = useRouter();
   const [selectedModel, setSelectedModel] = useState<ModelConfig>(defaultModel);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
+  const sidebarOffset = useSidebarOffset();
 
   const handleSubmit = (message: string) => {
     const id = Math.random().toString(36).substring(2, 15);
@@ -26,37 +31,36 @@ export default function NewChatPage() {
   return (
     <div className="min-h-screen flex">
       <AppSidebar />
-      <main className="flex-1 ml-[60px] flex flex-col">
-        <header className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-zinc-800">
+      <main className={`flex-1 transition-[margin] duration-300 flex flex-col ${sidebarOffset}`}>
+        <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-40">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link href="/" className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-accent flex items-center justify-center">
+                <span className="text-white text-xs font-bold">I</span>
+              </div>
+              <span className="font-semibold hidden sm:inline">Ihsan</span>
             </Link>
-            <div className="h-9 w-9 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-500 dark:text-indigo-400 flex items-center justify-center">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-              AI Chat
-            </h1>
           </div>
           <ModelSelector selected={selectedModel} onChange={setSelectedModel} />
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="h-16 w-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-500 dark:text-indigo-400 flex items-center justify-center mb-6">
-            <Sparkles className="h-8 w-8" />
-          </div>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-            Start a conversation
-          </h2>
-          <p className="text-gray-500 dark:text-zinc-400 mb-8">
-            Ask anything — powered by {selectedModel.name}
-          </p>
-          <div className="w-full max-w-2xl">
-            <SearchBar onSubmit={handleSubmit} />
+        <div className="flex-1 overflow-y-auto">
+          <WelcomeScreen onSelect={handleSubmit} />
+        </div>
+
+        <div className="border-t border-border bg-background">
+          <div className="max-w-3xl mx-auto px-4 py-4">
+            <ChatInput
+              onSubmit={handleSubmit}
+              placeholder="Ask anything..."
+              autoFocus
+            />
           </div>
         </div>
       </main>

@@ -14,6 +14,8 @@ import {
   Video,
   FileAudio,
   Sparkles,
+  Globe,
+  Bot,
 } from "lucide-react";
 
 interface Tool {
@@ -94,6 +96,20 @@ const tools: Tool[] = [
     href: "/tools/meeting-notes",
   },
   {
+    icon: <Globe className="h-6 w-6" />,
+    label: "Browser Agent",
+    color: "bg-emerald-50 text-emerald-500 dark:bg-emerald-950 dark:text-emerald-400",
+    badge: "New",
+    href: "/tools/browser-agent",
+  },
+  {
+    icon: <Bot className="h-6 w-6" />,
+    label: "AI Agent",
+    color: "bg-violet-50 text-violet-500 dark:bg-violet-950 dark:text-violet-400",
+    badge: "New",
+    href: "/tools/agent",
+  },
+  {
     icon: <Sparkles className="h-6 w-6" />,
     label: "All Agents",
     color: "bg-amber-50 text-amber-500 dark:bg-amber-950 dark:text-amber-400",
@@ -103,19 +119,20 @@ const tools: Tool[] = [
 
 export default function ToolGrid() {
   return (
-    <div className="flex flex-wrap justify-center gap-4 max-w-3xl mx-auto">
-      {tools.map((tool) => (
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 max-w-3xl mx-auto">
+      {tools.map((tool, i) => (
         <Link
           key={tool.label}
           href={tool.href}
-          className="flex flex-col items-center gap-2 w-20 group"
+          className="flex flex-col items-center gap-2 group animate-slide-up"
+          style={{ animationDelay: `${i * 30}ms`, animationFillMode: "backwards" }}
         >
           <div
-            className={`h-14 w-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 ${tool.color}`}
+            className={`h-14 w-14 rounded-2xl flex items-center justify-center transition-all duration-200 group-hover:scale-110 group-hover:shadow-lg ${tool.color}`}
           >
             {tool.icon}
           </div>
-          <span className="text-xs text-gray-600 dark:text-zinc-400 text-center leading-tight">
+          <span className="text-xs text-gray-600 dark:text-zinc-400 text-center leading-tight group-hover:text-foreground transition-colors">
             {tool.label}
           </span>
           {tool.badge && (

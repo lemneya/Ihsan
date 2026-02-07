@@ -1,0 +1,25 @@
+{
+  "style_mode": "Mono+Red",
+  "fonts": {
+    "title": { "name": "Inter", "size": 40, "weight": "700" },
+    "subtitle": { "name": "Inter", "size": 20, "weight": "500" },
+    "body": { "name": "Inter", "size": 22, "weight": "400" },
+    "small": { "name": "Inter", "size": 14, "weight": "400" }
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "text": "#111111",
+    "muted": "#555555",
+    "accent": "#D0021B"
+  },
+  "layout": {
+    "ratio": "16:9",
+    "margins_px": { "top": 56, "right": 64, "bottom": 48, "left": 64 },
+    "two_column_split": { "left_pct": 58, "right_pct": 42 }
+  },
+  "rules": {
+    "max_bullets": 6,
+    "max_words_per_bullet": 12,
+    "one_idea_per_slide": true
+  }
+}
