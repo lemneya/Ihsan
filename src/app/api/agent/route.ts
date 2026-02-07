@@ -1,8 +1,11 @@
 import { streamText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { agentTools } from "@/lib/agent-tools";
+import { agentTools, filterTools, CORE_TOOL_NAMES } from "@/lib/agent-tools";
+import { buildSkillsContext } from "@/lib/skill-loader";
 import fs from "node:fs";
 import path from "node:path";
+
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3001";
 
 export const maxDuration = 120;
 
@@ -51,13 +54,32 @@ export async function POST(req: Request) {
       ? "\n\n[DEEP RESEARCH MODE] Be extra thorough: search with 3-5 different queries, fetch 5-8 sources, cross-reference extensively, and produce a comprehensive report with inline citations.\n\n"
       : "";
 
+    // Fetch enabled skills from backend to filter tools
+    let enabledTools = agentTools;
+    let skillsContext = "";
+    try {
+      const skillsRes = await fetch(`${WS_URL}/api/skills/enabled-tools`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (skillsRes.ok) {
+        const data = await skillsRes.json() as {
+          skills: { id: string; title: string; desc: string; tools: string[]; skillDir?: string }[];
+          tools: string[];
+        };
+        enabledTools = filterTools(data.tools);
+        skillsContext = buildSkillsContext(data.skills);
+      }
+    } catch {
+      // Backend unavailable — fall back to all tools
+    }
+
     const model = anthropic("claude-sonnet-4-5-20250929");
 
     const result = streamText({
       model,
-      system: AGENT_SYSTEM_PROMPT + deepPrefix,
+      system: AGENT_SYSTEM_PROMPT + deepPrefix + skillsContext,
       messages: [{ role: "user", content: task }],
-      tools: agentTools,
+      tools: enabledTools,
       stopWhen: stepCountIs(maxSteps),
       maxOutputTokens: isDeep ? 32000 : 16000,
     });

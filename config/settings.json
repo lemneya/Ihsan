@@ -1,0 +1,11 @@
+{
+  "theme": "light",
+  "language": "English (US)",
+  "memory": true,
+  "tone": "Professional",
+  "model": "claude-sonnet-4-5-20250929",
+  "maxSteps": {
+    "normal": 5,
+    "deep": 10
+  }
+}

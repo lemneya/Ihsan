@@ -70,11 +70,13 @@ These tools invoke specialized AI models with domain-specific system prompts. Th
 
 ### generate_slides
 
-- **Input:** topic (presentation topic + requirements)
+- **Input:** topic, audience, goal, duration_min, tone, constraints
+- **Optional:** `research` (bullet-point claims + source URLs from your web research), `outline` (slide titles + takeaways from your outline step)
 - **Output:** Full markdown slide deck with speaker notes
 - **Format:** Slides separated by `---`, each with `## Slide N: Title`
-- **Includes:** Title slide, 5-10 content slides, conclusion, speaker notes
+- **Includes:** Title slide, content slides (count computed from spec), conclusion, speaker notes
 - **Use when:** User wants a presentation, pitch deck, lecture, or training material
+- **Workflow note:** When the slides-generator skill workflow is active, complete Steps 0-3 (intake, research, outline, visual planning) BEFORE calling this tool. Pass your research and outline as parameters so the inner model builds from your findings.
 
 ### generate_document
 

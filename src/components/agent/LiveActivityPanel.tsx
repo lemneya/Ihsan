@@ -348,7 +348,7 @@ export default function LiveActivityPanel({ state }: LiveActivityPanelProps) {
 
   return (
     <div className="flex flex-col h-full bg-card">
-      {/* Header — mimics Manus's "Manus's Computer" */}
+      {/* Header — Ihsan's activity window */}
       <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border bg-muted/30">
         {/* Window dots */}
         <div className="flex gap-1.5 flex-shrink-0">

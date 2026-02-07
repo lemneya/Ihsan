@@ -27,15 +27,11 @@ const STYLE_TOKENS = STYLE_TOKENS_RAW ? JSON.parse(STYLE_TOKENS_RAW) : null;
 
 // ─── Ihsan Tool System Prompts (reused from /api/tools) ─────────────
 
-const ihsanToolPrompts: Record<string, string> = {
+export const ihsanToolPrompts: Record<string, string> = {
   slides: `You are Ihsan Slides — a professional presentation engine.
 You MUST follow the SLIDES_SPEC (SSOT) exactly. Do not improvise structure, slide count, or style.
 
 ${SLIDES_SPEC}
-
-${WORKFLOW}
-
-${QUALITY_GATES}
 
 ## Style Tokens
 ${STYLE_TOKENS_RAW}
@@ -58,7 +54,12 @@ HARD RULES:
 - Do NOT use generic images. Each image must relate directly to the slide content.
 - Include a Cover slide, structured content slides, and a Conclusion/Summary slide.
 - Follow the structure template that matches the goal (Executive Brief / Education Explainer / Data Report).
-- Compute slide count from the spec rules based on duration and goal.`,
+- Compute slide count from the spec rules based on duration and goal.
+
+## Pre-Built Content
+If a pre-built outline is provided, follow it closely — use the slide titles, order, and takeaways as given.
+If pre-researched sources are provided, weave them into the content with inline citations (e.g., "According to [Source]...").
+Do NOT invent additional claims beyond what the research supports.`,
 
   docs: `You are an AI document writer. Create professional, well-structured documents.
 Format with: Clear title and subtitle, table of contents for longer documents, properly structured sections with headings, professional tone, bullet points and numbered lists, bold key terms, and a summary/abstract for reports.`,
@@ -92,7 +93,7 @@ async function callIhsanTool(
     model,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    maxOutputTokens: 8000,
+    maxOutputTokens: 16000,
   });
 
   // Collect the full text
@@ -104,6 +105,27 @@ async function callIhsanTool(
 }
 
 // ─── Agent Tools ────────────────────────────────────────────────────
+
+// Core tools always available regardless of skill toggles
+export const CORE_TOOL_NAMES = [
+  "web_search",
+  "web_fetch",
+  "run_javascript",
+  "create_artifact",
+  "create_diagram",
+] as const;
+
+/** Filter agentTools to only include tools allowed by the given tool name list */
+export function filterTools(allowedNames: string[]): typeof agentTools {
+  const allowed = new Set(allowedNames);
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(agentTools)) {
+    if (allowed.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return filtered as typeof agentTools;
+}
 
 export const agentTools = {
   // ── Web Tools ──────────────────────────────────────────────────────
@@ -333,7 +355,7 @@ export const agentTools = {
 
   generate_slides: tool({
     description:
-      "Generate a full presentation/slide deck using Ihsan Slides. Use this when the user needs a presentation, pitch deck, or any slide-based content. Returns a complete markdown slide deck following the SLIDES_SPEC SSOT with deterministic structure, quality gates, and evidence.",
+      "Generate a full presentation/slide deck using Ihsan Slides. IMPORTANT: Before calling this tool, you should have already completed Steps 0-3 of the workflow (intake, research, outline, visual planning). Pass your research and outline as parameters so the inner model can build a rich, evidence-backed deck.",
     inputSchema: z.object({
       topic: z.string().describe("The presentation topic"),
       audience: z.string().describe("Target audience (e.g., investors, staff, customers, students)").default("general"),
@@ -341,8 +363,10 @@ export const agentTools = {
       duration_min: z.number().describe("Presentation duration in minutes").default(10),
       tone: z.enum(["executive", "technical", "friendly", "academic"]).describe("Presentation tone").default("friendly"),
       constraints: z.string().describe("Optional constraints (e.g., 'no stock photos', 'cite sources')").optional(),
+      research: z.string().describe("Bullet-point claims with source URLs from your web research (Steps 0-1)").optional(),
+      outline: z.string().describe("Slide titles + one-sentence takeaways from your outline (Step 2)").optional(),
     }),
-    execute: async ({ topic, audience, goal, duration_min, tone, constraints }) => {
+    execute: async ({ topic, audience, goal, duration_min, tone, constraints, research, outline }) => {
       // Deterministic slide count from SLIDES_SPEC
       let slideCount: number;
       if (goal === "pitch") {
@@ -363,6 +387,13 @@ export const agentTools = {
         template = "Data Report";
       }
 
+      const researchSection = research
+        ? `\n\n## Pre-Researched Sources\n${research}`
+        : "";
+      const outlineSection = outline
+        ? `\n\n## Pre-Built Outline\n${outline}`
+        : "";
+
       const structuredPrompt = `Topic: ${topic}
 Audience: ${audience}
 Goal: ${goal}
@@ -373,7 +404,7 @@ Constraints: ${constraints || "none"}
 REQUIRED: Use the "${template}" structure template.
 REQUIRED: Generate exactly ${slideCount} slides (+-1 allowed only if template forces it).
 REQUIRED: Follow all SLIDES_SPEC rules — one idea per slide, max 6 bullets, max 12 words per bullet.
-REQUIRED: Every slide must have an [Image: ...] tag with a specific, vivid image description.`;
+REQUIRED: Every slide must have an [Image: ...] tag with a specific, vivid image description.${researchSection}${outlineSection}`;
 
       const content = await callIhsanTool("slides", structuredPrompt);
       return {
