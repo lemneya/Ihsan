@@ -2,16 +2,20 @@
  * agent.ts — The IhsanAgent Class
  *
  * This is the brain. It replaces the inline logic in server/index.ts.
- * Each socket connection gets its own IhsanAgent instance.
+ * Each connection gets its own IhsanAgent instance.
+ *
+ * Phase 11: Interface-agnostic. The agent no longer depends on socket.io.
+ * It communicates through a StreamInterface, which can be backed by
+ * WebSocket (SocketAdapter), HTTP (HttpAdapter), or any future transport.
  *
  * Lifecycle:
- *   1. new IhsanAgent(socket) — bind to a client connection
+ *   1. new IhsanAgent(stream) — bind to a transport adapter
  *   2. await agent.wakeUp()   — read identity + soul from /config
  *   3. await agent.execute()  — run a task (research, build, deliver)
  *   4. agent.abort()          — user hits stop
  */
 
-import type { Socket } from "socket.io";
+import type { StreamInterface } from "./interfaces";
 import { streamText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import {
@@ -42,7 +46,7 @@ interface ExecuteOptions {
 // ─── IhsanAgent ─────────────────────────────────────────────────────
 
 export class IhsanAgent {
-  private socket: Socket;
+  private stream: StreamInterface;
   private identity = "";
   private soul = "";
   private operationalPrompt = "";
@@ -50,15 +54,15 @@ export class IhsanAgent {
   private skillRegistry: SkillRegistry;
   private memory = new MemoryManager();
 
-  constructor(socket: Socket, registry: SkillRegistry) {
-    this.socket = socket;
+  constructor(stream: StreamInterface, registry: SkillRegistry) {
+    this.stream = stream;
     this.skillRegistry = registry;
   }
 
   // ── wakeUp — read personality from disk ───────────────────────────
 
   async wakeUp(): Promise<void> {
-    this.socket.emit("agent:log", { message: "I am awake. Reading identity..." });
+    this.stream.send("agent:log", { message: "I am awake. Reading identity..." });
 
     // Read editable personality from /config (real files on disk)
     this.identity = await readConfig("identity.md");
@@ -69,21 +73,21 @@ export class IhsanAgent {
 
     // Load persistent memory from disk
     const memorySummary = await this.memory.getSummary();
-    this.socket.emit("agent:log", {
+    this.stream.send("agent:log", {
       message: `[Memory] Context loaded: ${memorySummary}`,
     });
 
     // Report dynamic skills from the shared global registry (pre-loaded at server start)
     const dynamicSkills = this.skillRegistry.getEnabledSkills();
     if (dynamicSkills.length > 0) {
-      this.socket.emit("agent:log", {
+      this.stream.send("agent:log", {
         message: `Dynamic skills available: ${dynamicSkills.map((s) => s.name).join(", ")}`,
       });
     }
 
     const nameMatch = this.identity.match(/\*\*Name:\*\*\s*(.+)/);
     const name = nameMatch ? nameMatch[1].trim() : "Ihsan Agent";
-    this.socket.emit("agent:log", { message: `Identity loaded: ${name}` });
+    this.stream.send("agent:log", { message: `Identity loaded: ${name}` });
   }
 
   // ── buildSystemPrompt — assemble the full prompt from disk ────────
@@ -169,27 +173,56 @@ export class IhsanAgent {
         switch (event.type) {
           case "text-delta":
             fullAssistantText += event.text;
-            this.socket.emit("agent:text-delta", { text: event.text });
+            this.stream.send("agent:text-delta", { text: event.text });
             break;
 
           case "tool-call":
-            this.socket.emit("agent:tool-call", {
+            this.stream.send("agent:tool-call", {
               toolCallId: event.toolCallId,
               toolName: event.toolName,
               args: event.input,
             });
             break;
 
-          case "tool-result":
-            this.socket.emit("agent:tool-result", {
+          case "tool-result": {
+            const output = event.output as Record<string, unknown> | undefined;
+
+            // ── STREAM_SLIDES interceptor ────────────────────────
+            // If the dynamic generate_slides skill returned the
+            // STREAM_SLIDES marker, delegate to real-time streaming
+            // instead of passing the raw marker to the frontend.
+            if (
+              output &&
+              typeof output === "object" &&
+              output._action === "STREAM_SLIDES"
+            ) {
+              const slideTopic = String(output.topic || prompt);
+
+              // Emit the tool-call event so the frontend "sees" generate_slides
+              // (the Phase 5 useEffect triggers the view switch on this)
+              this.stream.send("agent:tool-result", {
+                toolCallId: event.toolCallId,
+                toolName: "generate_slides",
+                result: { status: "streaming", topic: slideTopic },
+              });
+
+              // Fire the real-time slide streamer (emits slides:state,
+              // slides:log, slides:slide events on this same socket)
+              await this.generateSlides(slideTopic);
+              break;
+            }
+
+            // Default: pass tool result through to the frontend
+            this.stream.send("agent:tool-result", {
               toolCallId: event.toolCallId,
               toolName: event.toolName,
-              result: event.output,
+              result: output,
             });
             break;
+          }
 
           case "tool-error":
-            this.socket.emit("agent:tool-error", {
+            this.stream.send("agent:tool-error", {
               toolCallId: event.toolCallId,
               toolName: event.toolName,
               error:
@@ -200,18 +233,18 @@ export class IhsanAgent {
             break;
 
           case "finish-step":
-            this.socket.emit("agent:step-finish", { stepIndex: stepIndex++ });
+            this.stream.send("agent:step-finish", { stepIndex: stepIndex++ });
             break;
 
           case "finish":
-            this.socket.emit("agent:finish", {
+            this.stream.send("agent:finish", {
               finishReason: event.finishReason,
               totalSteps: stepIndex,
             });
             break;
 
           case "error":
-            this.socket.emit("agent:error", {
+            this.stream.send("agent:error", {
               error:
                 event.error instanceof Error
                   ? event.error.message
@@ -228,7 +261,7 @@ export class IhsanAgent {
     } catch (err) {
       if (this.controller.signal.aborted) return;
       const message = err instanceof Error ? err.message : "Stream error";
-      this.socket.emit("agent:error", { error: message });
+      this.stream.send("agent:error", { error: message });
     } finally {
       this.controller = null;
     }
@@ -240,22 +273,22 @@ export class IhsanAgent {
     this.abort();
     this.controller = new AbortController();
 
-    this.socket.emit("slides:state", { status: "starting" });
-    this.socket.emit("slides:log", { message: "Starting AI slide generation..." });
-    this.socket.emit("slides:log", { message: "Loading spec and style tokens..." });
+    this.stream.send("slides:state", { status: "starting" });
+    this.stream.send("slides:log", { message: "Starting AI slide generation..." });
+    this.stream.send("slides:log", { message: "Loading spec and style tokens..." });
 
     const systemPrompt = ihsanToolPrompts["slides"];
     if (!systemPrompt) {
-      this.socket.emit("slides:log", { message: "Error: slides prompt not found" });
-      this.socket.emit("slides:state", { status: "done" });
+      this.stream.send("slides:log", { message: "Error: slides prompt not found" });
+      this.stream.send("slides:state", { status: "done" });
       return;
     }
 
     const model = anthropic("claude-sonnet-4-5-20250929");
 
     try {
-      this.socket.emit("slides:state", { status: "generating" });
-      this.socket.emit("slides:log", { message: "AI model is generating slides..." });
+      this.stream.send("slides:state", { status: "generating" });
+      this.stream.send("slides:log", { message: "AI model is generating slides..." });
 
       const result = streamText({
         model,
@@ -281,12 +314,12 @@ export class IhsanAgent {
           const slideText = parts.shift()!;
           const parsed = this.parseSlideChunk(slideText);
           if (parsed) {
-            this.socket.emit("slides:slide", {
+            this.stream.send("slides:slide", {
               index: slideIndex,
               total: -1,
               content: parsed,
             });
-            this.socket.emit("slides:log", {
+            this.stream.send("slides:log", {
               message: `Generated slide ${slideIndex + 1}: ${parsed.title}`,
             });
             slideIndex++;
@@ -299,12 +332,12 @@ export class IhsanAgent {
       if (buffer.trim()) {
         const parsed = this.parseSlideChunk(buffer);
         if (parsed) {
-          this.socket.emit("slides:slide", {
+          this.stream.send("slides:slide", {
             index: slideIndex,
             total: slideIndex + 1,
             content: parsed,
           });
-          this.socket.emit("slides:log", {
+          this.stream.send("slides:log", {
             message: `Generated slide ${slideIndex + 1}: ${parsed.title}`,
           });
           slideIndex++;
@@ -312,16 +345,16 @@ export class IhsanAgent {
       }
 
       // Update totals on all previously emitted slides
-      this.socket.emit("slides:log", {
+      this.stream.send("slides:log", {
         message: `Presentation complete: ${slideIndex} slides generated.`,
       });
-      this.socket.emit("slides:state", { status: "done" });
-      this.socket.emit("slides:log", { message: "Presentation ready for download." });
+      this.stream.send("slides:state", { status: "done" });
+      this.stream.send("slides:log", { message: "Presentation ready for download." });
     } catch (err) {
       if (this.controller.signal.aborted) return;
       const message = err instanceof Error ? err.message : "Slide generation failed";
-      this.socket.emit("slides:log", { message: `Error: ${message}` });
-      this.socket.emit("slides:state", { status: "done" });
+      this.stream.send("slides:log", { message: `Error: ${message}` });
+      this.stream.send("slides:state", { status: "done" });
     } finally {
       this.controller = null;
     }

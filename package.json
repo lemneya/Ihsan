@@ -7,7 +7,9 @@
     "dev:ws": "tsx watch server/index.ts",
     "dev:full": "concurrently \"next dev\" \"tsx watch server/index.ts\"",
     "build": "next build",
+    "build:server": "tsc -p server/tsconfig.json",
     "start": "next start",
+    "start:server": "node server/dist/server/index.js",
     "lint": "eslint"
   },
   "dependencies": {
@@ -15,6 +17,7 @@
     "@ai-sdk/google": "^3.0.21",
     "@ai-sdk/openai": "^3.0.25",
     "@ai-sdk/react": "^3.0.75",
+    "@e2b/code-interpreter": "^2.3.3",
     "@types/multer": "^2.0.0",
     "ai": "^6.0.73",
     "clsx": "^2.1.1",
@@ -40,6 +43,7 @@
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.4.0",
     "tsx": "^4.21.0",
+    "twilio": "^5.12.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

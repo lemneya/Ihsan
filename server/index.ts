@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 
-// Load .env.local before anything else
+// Load .env.local before anything else — Phase 7: Engineer + Self-Preservation
 dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
 
 import express from "express";
@@ -12,20 +12,26 @@ import multer from "multer";
 import { IhsanAgent } from "../src/agent-os/agent";
 import { ensureDirs, getInputsDir } from "../src/agent-os/fs-adapter";
 import { SkillRegistry } from "../src/agent-os/skill-registry";
+import { SocketAdapter } from "../src/agent-os/adapters/socket-adapter";
+import { HttpAdapter } from "../src/agent-os/adapters/http-adapter";
+import { createWhatsAppRouter } from "./routes/whatsapp";
 
 // ─── Global Skill Registry (singleton — shared across all agents) ────
 const globalRegistry = new SkillRegistry();
 
 // ─── Express + Socket.io Setup ──────────────────────────────────────
 
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+
 const app = express();
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Phase 12: Twilio sends form-encoded data
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: CORS_ORIGIN,
     methods: ["GET", "POST"],
   },
 });
@@ -117,6 +123,14 @@ const connectors: Connector[] = [
     description: "Search workspace content, update notes, and automate workflows in Notion.",
     icon: "notion",
     status: "disconnected",
+    category: "app",
+  },
+  {
+    id: "whatsapp",
+    name: "WhatsApp",
+    description: "Chat with Ihsan directly from WhatsApp via Twilio webhook bridge.",
+    icon: "whatsapp",
+    status: "connected",
     category: "app",
   },
   {
@@ -275,6 +289,37 @@ app.put("/api/personalization", (req, res) => {
   res.json({ success: true, data: personalization });
 });
 
+// ─── Phase 11: REST API — Headless Mode ──────────────────────────────
+
+app.post("/api/chat", async (req, res) => {
+  const { message, mode } = req.body;
+
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    res.status(400).json({ error: "message is required" });
+    return;
+  }
+
+  const adapter = new HttpAdapter();
+  const agent = new IhsanAgent(adapter, globalRegistry);
+
+  try {
+    await agent.wakeUp();
+    await agent.execute(message.trim(), {
+      mode: mode === "deep" ? "deep" : undefined,
+      skills,
+    });
+
+    res.json(adapter.toResponse());
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "Internal error";
+    res.status(500).json({ error, events: adapter.getEvents() });
+  }
+});
+
+// ─── Phase 12: WhatsApp Bridge (Twilio Webhook) ─────────────────────
+
+app.use("/api/whatsapp", createWhatsAppRouter(globalRegistry, skills));
+
 // ─── Active IhsanAgent Instances ─────────────────────────────────────
 
 const agents = new Map<string, IhsanAgent>();
@@ -289,8 +334,9 @@ io.on("connection", async (socket) => {
     socket.emit("agent:heartbeat");
   }, 15000);
 
-  // Instantiate the agent for this connection (shared global registry) and wake it up
-  const agent = new IhsanAgent(socket, globalRegistry);
+  // Phase 11: Wrap socket in SocketAdapter for interface-agnostic agent
+  const stream = new SocketAdapter(socket);
+  const agent = new IhsanAgent(stream, globalRegistry);
   agents.set(socket.id, agent);
 
   try {
@@ -346,7 +392,7 @@ io.on("connection", async (socket) => {
 
 // ─── Start ──────────────────────────────────────────────────────────
 
-const PORT = parseInt(process.env.WS_PORT || "3001", 10);
+const PORT = parseInt(process.env.PORT || process.env.WS_PORT || "3001", 10);
 
 // Ensure AgentOS directories exist, load skills, then start the server
 ensureDirs()

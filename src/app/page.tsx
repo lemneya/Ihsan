@@ -84,6 +84,120 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const taskIdRef = useRef<string | null>(null);
 
+  /* ─── Force-switch to slide view when agent calls generate_slides ─ */
+  useEffect(() => {
+    if (state.status !== "running") return;
+
+    // Scan all steps for a generate_slides (or create_presentation) tool call
+    const hasSlideToolCall = state.steps.some((step) =>
+      step.toolCalls.some(
+        (tc) =>
+          tc.name === "generate_slides" || tc.name === "create_presentation"
+      )
+    );
+
+    if (hasSlideToolCall && slideView !== "slides") {
+      // Extract the original task as the slide prompt
+      setSlidePrompt(state.task);
+      setSlideLogs([]);
+      setSlideSlides([]);
+      setSlideStatus("starting");
+      setSlideView("slides");
+    }
+  }, [state.status, state.steps, slideView]);
+
+  /* ─── Bridge agent tool results into slide data ──────────────────── */
+  useEffect(() => {
+    if (slideView !== "slides") return;
+
+    // Collect log-like text from agent steps (text deltas)
+    const agentLogs: string[] = [];
+    const agentSlides: { title: string; subtitle: string; bullet: string }[] = [];
+
+    for (const step of state.steps) {
+      // Push step text as log entries (split by newline, filter empty)
+      if (step.text.trim()) {
+        const lines = step.text.split("\n").filter((l) => l.trim());
+        agentLogs.push(...lines);
+      }
+
+      // Extract slide data from tool results
+      for (const tc of step.toolCalls) {
+        if (
+          tc.name === "generate_slides" ||
+          tc.name === "create_presentation"
+        ) {
+          if (tc.status === "done" && tc.result) {
+            try {
+              const result =
+                typeof tc.result === "string"
+                  ? JSON.parse(tc.result)
+                  : tc.result;
+
+              // If result.status === "streaming", the agent is using
+              // the STREAM_SLIDES flow — real-time data comes through
+              // the dedicated slides:* socket events, not here. Skip.
+              if (result?.status === "streaming") break;
+
+              // Fallback: parse slide data from a static tool result
+              // (e.g. from the hardcoded generate_slides in agent-tools)
+              if (result?.content && typeof result.content === "string") {
+                // Parse markdown slides from the content field
+                const slideChunks = result.content.split(/\n---\n/);
+                for (const chunk of slideChunks) {
+                  const titleMatch = chunk.match(/^##\s+(?:Slide\s+\d+:\s*)?(.+)/m);
+                  if (!titleMatch) continue;
+                  const title = titleMatch[1].trim();
+                  const bullets = chunk
+                    .split("\n")
+                    .filter((line: string) => /^\s*-\s+/.test(line))
+                    .map((line: string) => line.replace(/^\s*-\s+/, "").trim());
+                  agentSlides.push({
+                    title,
+                    subtitle: bullets[0] || "",
+                    bullet: bullets.slice(1).join(" | ") || "",
+                  });
+                }
+                setSlideStatus("done");
+              } else if (Array.isArray(result?.slides)) {
+                agentSlides.push(
+                  ...result.slides.map(
+                    (s: { title?: string; subtitle?: string; bullet?: string }) => ({
+                      title: s.title ?? "",
+                      subtitle: s.subtitle ?? "",
+                      bullet: s.bullet ?? "",
+                    })
+                  )
+                );
+                setSlideStatus("done");
+              } else if (Array.isArray(result)) {
+                agentSlides.push(
+                  ...result.map(
+                    (s: { title?: string; subtitle?: string; bullet?: string }) => ({
+                      title: s.title ?? "",
+                      subtitle: s.subtitle ?? "",
+                      bullet: s.bullet ?? "",
+                    })
+                  )
+                );
+                setSlideStatus("done");
+              }
+            } catch {
+              // Non-JSON result — ignore
+            }
+          }
+          if (tc.status === "error") {
+            agentLogs.push(`Error: ${tc.error ?? "Slide generation failed"}`);
+          }
+        }
+      }
+    }
+
+    // Only update if we have new data from the agent flow
+    if (agentLogs.length > 0) setSlideLogs(agentLogs);
+    if (agentSlides.length > 0) setSlideSlides(agentSlides);
+  }, [state.steps, slideView]);
+
   /* ─── Carousel auto-rotate ──────────────────────────────────────── */
   useEffect(() => {
     const interval = setInterval(() => {
@@ -141,7 +255,11 @@ export default function Home() {
     setSlideLogs([]);
     setSlideSlides([]);
     setSlidePrompt("");
-  }, []);
+    // If the agent is still running (agent-driven slide flow), stop it
+    if (state.status === "running") {
+      stop();
+    }
+  }, [state.status, stop]);
 
   const handleSlideRegenerate = useCallback(() => {
     if (!slidePrompt) return;

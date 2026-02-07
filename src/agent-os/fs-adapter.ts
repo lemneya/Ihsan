@@ -17,13 +17,15 @@ const CONFIG_DIR = join(ROOT, "config");
 const MEMORY_DIR = join(ROOT, "memory");
 const SKILLS_DIR = join(ROOT, "skills");
 const INPUTS_DIR = join(ROOT, "inputs");
+const OUTPUTS_DIR = join(ROOT, "outputs");
+const WORKSPACE_DIR = join(ROOT, "workspace");
 const PERSONA_DIR = join(ROOT, "src", "lib", "agent-persona");
 
 // ─── Bootstrap ──────────────────────────────────────────────────────
 
 /** Ensure all AgentOS directories exist on disk. Call once at startup. */
 export async function ensureDirs(): Promise<void> {
-  for (const dir of [CONFIG_DIR, MEMORY_DIR, SKILLS_DIR, INPUTS_DIR]) {
+  for (const dir of [CONFIG_DIR, MEMORY_DIR, SKILLS_DIR, INPUTS_DIR, OUTPUTS_DIR, WORKSPACE_DIR]) {
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
     }
