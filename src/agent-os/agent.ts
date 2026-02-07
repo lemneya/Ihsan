@@ -22,6 +22,7 @@ import {
   readConfig,
   loadOperationalPersona,
 } from "./fs-adapter";
+import { criticize, refine, QUALITY_THRESHOLD } from "./cognition";
 import { agentTools, ihsanToolPrompts } from "../lib/agent-tools";
 import { buildSkillsContext } from "../lib/skill-loader";
 import { SkillRegistry } from "./skill-registry";
@@ -251,6 +252,35 @@ export class IhsanAgent {
                   : String(event.error),
             });
             break;
+        }
+      }
+
+      // ── System 2: Think → Critique → Refine ─────────────────────
+      if (fullAssistantText.trim()) {
+        try {
+          this.stream.send("agent:log", { message: "[System 2] Running critic..." });
+          const criticResult = await criticize(fullAssistantText, prompt);
+          this.stream.send("agent:log", {
+            message: `[System 2] Score: ${criticResult.score}/100 (G:${criticResult.grounding} S:${criticResult.safety} C:${criticResult.completeness})`,
+          });
+
+          if (criticResult.score < QUALITY_THRESHOLD) {
+            this.stream.send("agent:log", {
+              message: `[System 2] Below threshold (${QUALITY_THRESHOLD}), refining...`,
+            });
+            const refinedText = await refine(fullAssistantText, criticResult.instructions, prompt);
+            fullAssistantText = refinedText;
+
+            // Emit refined text so adapters can prefer it over streamed deltas
+            this.stream.send("agent:refined", { text: refinedText });
+            this.stream.send("agent:log", { message: "[System 2] Refinement complete." });
+          } else {
+            this.stream.send("agent:log", { message: "[System 2] Draft passed quality gate." });
+          }
+        } catch (cognitionErr) {
+          // Cognition loop failure is non-fatal — the original draft stands
+          const msg = cognitionErr instanceof Error ? cognitionErr.message : "Cognition error";
+          this.stream.send("agent:log", { message: `[System 2] Critic skipped: ${msg}` });
         }
       }
 

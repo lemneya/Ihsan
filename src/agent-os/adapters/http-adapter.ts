@@ -38,8 +38,15 @@ export class HttpAdapter implements StreamInterface {
     return this.buffer;
   }
 
-  /** Extract the final assistant text from buffered text-delta events */
+  /** Extract the final assistant text — prefers refined text if System 2 ran */
   getFullText(): string {
+    // If System 2 refinement occurred, use the refined version
+    const refined = this.buffer.find((e) => e.event === "agent:refined");
+    if (refined?.data?.text) {
+      return refined.data.text;
+    }
+
+    // Otherwise, concatenate streaming text-delta events
     return this.buffer
       .filter((e) => e.event === "agent:text-delta")
       .map((e) => e.data?.text || "")

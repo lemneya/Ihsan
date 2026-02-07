@@ -20,6 +20,7 @@ exports.IhsanAgent = void 0;
 const ai_1 = require("ai");
 const anthropic_1 = require("@ai-sdk/anthropic");
 const fs_adapter_1 = require("./fs-adapter");
+const cognition_1 = require("./cognition");
 const agent_tools_1 = require("../lib/agent-tools");
 const skill_loader_1 = require("../lib/skill-loader");
 const memory_manager_1 = require("./memory-manager");
@@ -192,6 +193,34 @@ class IhsanAgent {
                                 : String(event.error),
                         });
                         break;
+                }
+            }
+            // ── System 2: Think → Critique → Refine ─────────────────────
+            if (fullAssistantText.trim()) {
+                try {
+                    this.stream.send("agent:log", { message: "[System 2] Running critic..." });
+                    const criticResult = await (0, cognition_1.criticize)(fullAssistantText, prompt);
+                    this.stream.send("agent:log", {
+                        message: `[System 2] Score: ${criticResult.score}/100 (G:${criticResult.grounding} S:${criticResult.safety} C:${criticResult.completeness})`,
+                    });
+                    if (criticResult.score < cognition_1.QUALITY_THRESHOLD) {
+                        this.stream.send("agent:log", {
+                            message: `[System 2] Below threshold (${cognition_1.QUALITY_THRESHOLD}), refining...`,
+                        });
+                        const refinedText = await (0, cognition_1.refine)(fullAssistantText, criticResult.instructions, prompt);
+                        fullAssistantText = refinedText;
+                        // Emit refined text so adapters can prefer it over streamed deltas
+                        this.stream.send("agent:refined", { text: refinedText });
+                        this.stream.send("agent:log", { message: "[System 2] Refinement complete." });
+                    }
+                    else {
+                        this.stream.send("agent:log", { message: "[System 2] Draft passed quality gate." });
+                    }
+                }
+                catch (cognitionErr) {
+                    // Cognition loop failure is non-fatal — the original draft stands
+                    const msg = cognitionErr instanceof Error ? cognitionErr.message : "Cognition error";
+                    this.stream.send("agent:log", { message: `[System 2] Critic skipped: ${msg}` });
                 }
             }
             // Save assistant response to conversation history
