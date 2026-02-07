@@ -23,6 +23,7 @@ const globalRegistry = new skill_registry_1.SkillRegistry();
 // ─── Express + Socket.io Setup ──────────────────────────────────────
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
 const app = (0, express_1.default)();
+app.set("trust proxy", true); // Azure reverse proxy — ensures req.protocol is "https"
 app.use((0, cors_1.default)({ origin: CORS_ORIGIN }));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true })); // Phase 12: Twilio sends form-encoded data
