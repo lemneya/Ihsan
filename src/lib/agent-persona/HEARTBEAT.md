@@ -10,7 +10,7 @@ A heartbeat is a periodic signal that tells the user the agent is still active d
 
 The server sends periodic heartbeat events during long-running tool executions to prevent:
 - Browser timeout (default ~60s for idle connections)
-- Proxy/CDN timeout (Vercel, Cloudflare, etc.)
+- Proxy/CDN timeout (Azure App Service, Cloudflare, etc.)
 - User confusion ("Is it frozen?")
 
 ## Status Updates

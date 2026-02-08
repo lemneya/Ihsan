@@ -55,9 +55,10 @@ export class IhsanAgent {
   private skillRegistry: SkillRegistry;
   private memory = new MemoryManager();
 
-  constructor(stream: StreamInterface, registry: SkillRegistry) {
+  constructor(stream: StreamInterface, registry: SkillRegistry, threadId?: string) {
     this.stream = stream;
     this.skillRegistry = registry;
+    this.memory = new MemoryManager(threadId);
   }
 
   // ── wakeUp — read personality from disk ───────────────────────────

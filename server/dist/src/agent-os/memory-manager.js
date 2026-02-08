@@ -20,13 +20,35 @@ exports.MemoryManager = void 0;
 const promises_1 = require("node:fs/promises");
 const node_path_1 = require("node:path");
 // ─── Constants ──────────────────────────────────────────────────────
-const MEMORY_DIR = (0, node_path_1.join)(process.cwd(), "memory");
-const USER_FACTS_FILE = (0, node_path_1.join)(MEMORY_DIR, "user.md");
-const SHORT_TERM_FILE = (0, node_path_1.join)(MEMORY_DIR, "short_term.json");
+const BASE_MEMORY_DIR = (0, node_path_1.join)(process.cwd(), "memory");
 const MAX_TURNS = 20;
 const LOG_PREFIX = "[Memory]";
 // ─── MemoryManager ──────────────────────────────────────────────────
 class MemoryManager {
+    memoryDir;
+    userFactsFile;
+    shortTermFile;
+    /**
+     * @param threadId — Optional thread ID for per-user memory isolation.
+     *   When provided (e.g. "whatsapp:+17573394946"), memory is scoped
+     *   to memory/threads/<sanitized-id>/ so each user gets their own
+     *   conversation history and facts.
+     */
+    constructor(threadId) {
+        if (threadId) {
+            const safeId = threadId.replace(/[^a-zA-Z0-9_+-]/g, "_");
+            this.memoryDir = (0, node_path_1.join)(BASE_MEMORY_DIR, "threads", safeId);
+        }
+        else {
+            this.memoryDir = BASE_MEMORY_DIR;
+        }
+        this.userFactsFile = (0, node_path_1.join)(this.memoryDir, "user.md");
+        this.shortTermFile = (0, node_path_1.join)(this.memoryDir, "short_term.json");
+    }
+    /** Ensure the memory directory exists before writing */
+    async ensureDir() {
+        await (0, promises_1.mkdir)(this.memoryDir, { recursive: true });
+    }
     // ── Load Context ────────────────────────────────────────────────
     /**
      * Load full memory context from disk.
@@ -83,7 +105,8 @@ class MemoryManager {
             ? history.slice(history.length - MAX_TURNS)
             : history;
         try {
-            await (0, promises_1.writeFile)(SHORT_TERM_FILE, JSON.stringify(trimmed, null, 2) + "\n", "utf-8");
+            await this.ensureDir();
+            await (0, promises_1.writeFile)(this.shortTermFile, JSON.stringify(trimmed, null, 2) + "\n", "utf-8");
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -111,7 +134,8 @@ class MemoryManager {
                 console.log(`${LOG_PREFIX} Fact already known: "${cleanFact}"`);
                 return;
             }
-            await (0, promises_1.appendFile)(USER_FACTS_FILE, `${formatted}\n`, "utf-8");
+            await this.ensureDir();
+            await (0, promises_1.appendFile)(this.userFactsFile, `${formatted}\n`, "utf-8");
             console.log(`${LOG_PREFIX} Learned new fact: "${cleanFact}"`);
         }
         catch (err) {
@@ -136,7 +160,7 @@ class MemoryManager {
     // ── Private Helpers ─────────────────────────────────────────────
     async readUserFacts() {
         try {
-            return await (0, promises_1.readFile)(USER_FACTS_FILE, "utf-8");
+            return await (0, promises_1.readFile)(this.userFactsFile, "utf-8");
         }
         catch {
             return "";
@@ -144,7 +168,7 @@ class MemoryManager {
     }
     async readConversationHistory() {
         try {
-            const raw = await (0, promises_1.readFile)(SHORT_TERM_FILE, "utf-8");
+            const raw = await (0, promises_1.readFile)(this.shortTermFile, "utf-8");
             const parsed = JSON.parse(raw);
             // Handle both old format (metadata-only) and new format (conversation turns)
             if (!Array.isArray(parsed))

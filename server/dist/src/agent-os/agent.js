@@ -33,9 +33,10 @@ class IhsanAgent {
     controller = null;
     skillRegistry;
     memory = new memory_manager_1.MemoryManager();
-    constructor(stream, registry) {
+    constructor(stream, registry, threadId) {
         this.stream = stream;
         this.skillRegistry = registry;
+        this.memory = new memory_manager_1.MemoryManager(threadId);
     }
     // ── wakeUp — read personality from disk ───────────────────────────
     async wakeUp() {
