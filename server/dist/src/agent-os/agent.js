@@ -197,11 +197,13 @@ class IhsanAgent {
                 }
             }
             // ── System 2: Think → Critique → Refine ─────────────────────
-            if (fullAssistantText.trim()) {
+            // Safety: preserve the System 1 draft so we NEVER lose it
+            const originalDraft = fullAssistantText;
+            if (originalDraft.trim()) {
                 try {
                     console.log("[System 2] Running critic...");
                     this.stream.send("agent:log", { message: "[System 2] Running critic..." });
-                    const criticResult = await (0, cognition_1.criticize)(fullAssistantText, prompt);
+                    const criticResult = await (0, cognition_1.criticize)(originalDraft, prompt);
                     const scoreMsg = `[System 2] Score: ${criticResult.score}/100 (G:${criticResult.grounding} S:${criticResult.safety} C:${criticResult.completeness})`;
                     console.log(scoreMsg);
                     this.stream.send("agent:log", { message: scoreMsg });
@@ -210,12 +212,26 @@ class IhsanAgent {
                         this.stream.send("agent:log", {
                             message: `[System 2] Below threshold (${cognition_1.QUALITY_THRESHOLD}), refining...`,
                         });
-                        const refinedText = await (0, cognition_1.refine)(fullAssistantText, criticResult.instructions, prompt);
-                        fullAssistantText = refinedText;
-                        // Emit refined text so adapters can prefer it over streamed deltas
-                        this.stream.send("agent:refined", { text: refinedText });
-                        console.log("[System 2] Refinement complete.");
-                        this.stream.send("agent:log", { message: "[System 2] Refinement complete." });
+                        try {
+                            const refinedText = await (0, cognition_1.refine)(originalDraft, criticResult.instructions, prompt);
+                            if (refinedText && refinedText.trim()) {
+                                fullAssistantText = refinedText;
+                                this.stream.send("agent:refined", { text: refinedText });
+                                console.log("[System 2] Refinement complete.");
+                                this.stream.send("agent:log", { message: "[System 2] Refinement complete." });
+                            }
+                            else {
+                                // Refine returned empty — keep the original draft
+                                console.log("[System 2] Refiner returned empty — keeping original draft.");
+                                this.stream.send("agent:log", { message: "[System 2] Refiner returned empty — keeping draft." });
+                            }
+                        }
+                        catch (refineErr) {
+                            // Refine failed — keep the original draft
+                            const msg = refineErr instanceof Error ? refineErr.message : "Refine error";
+                            console.log(`[System 2] Refiner failed: ${msg} — keeping original draft.`);
+                            this.stream.send("agent:log", { message: `[System 2] Refiner failed: ${msg} — keeping draft.` });
+                        }
                     }
                     else {
                         console.log("[System 2] Draft passed quality gate.");
@@ -223,10 +239,11 @@ class IhsanAgent {
                     }
                 }
                 catch (cognitionErr) {
-                    // Cognition loop failure is non-fatal — the original draft stands
+                    // Critic failed — keep the original draft
+                    fullAssistantText = originalDraft;
                     const msg = cognitionErr instanceof Error ? cognitionErr.message : "Cognition error";
-                    console.log(`[System 2] Critic skipped: ${msg}`);
-                    this.stream.send("agent:log", { message: `[System 2] Critic skipped: ${msg}` });
+                    console.log(`[System 2] Critic failed: ${msg} — keeping original draft.`);
+                    this.stream.send("agent:log", { message: `[System 2] Critic failed: ${msg} — keeping draft.` });
                 }
             }
             // Save assistant response to conversation history
